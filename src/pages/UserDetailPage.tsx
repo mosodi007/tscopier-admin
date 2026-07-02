@@ -1,0 +1,283 @@
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Server, MessageSquare, Zap, TrendingUp, FlaskConical } from 'lucide-react';
+import { authSupabase as adminSupabase } from '../lib/adminSupabase';
+import { formatDate, formatDateOnly, formatCurrency, truncate } from '../lib/formatters';
+import { Card, CardHeader, CardContent } from '../components/ui/Card';
+import { StatusBadge } from '../components/StatusBadge';
+import { Button } from '../components/ui/Button';
+
+interface UserProfile {
+  user_id: string;
+  display_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  username: string | null;
+  country: string | null;
+  city: string | null;
+  timezone: string | null;
+  base_currency: string | null;
+  is_admin: boolean;
+  admin_until: string | null;
+  copier_paused: boolean | null;
+  onboarding_completed_at: string | null;
+  referred_by_user_id: string | null;
+  email_verified_at: string | null;
+  subscription_status: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface Subscription {
+  plan: string;
+  status: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  extra_accounts: number;
+  trial_ends_at: string | null;
+  current_period_end: string | null;
+  created_at: string;
+}
+
+function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-4 py-2 border-b border-slate-100 dark:border-slate-700 last:border-0">
+      <span className="w-36 shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400 pt-0.5">{label}</span>
+      <span className="text-sm text-slate-900 dark:text-slate-100">{value ?? '—'}</span>
+    </div>
+  );
+}
+
+export function UserDetailPage() {
+  const { userId } = useParams<{ userId: string }>();
+  const navigate = useNavigate();
+
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [brokers, setBrokers] = useState<any[]>([]);
+  const [channels, setChannels] = useState<any[]>([]);
+  const [signals, setSignals] = useState<any[]>([]);
+  const [trades, setTrades] = useState<any[]>([]);
+  const [backtestCount, setBacktestCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [expandedSignalId, setExpandedSignalId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userId) return;
+    async function load() {
+      const [
+        { data: prof },
+        { data: sub },
+        { data: brok },
+        { data: chans },
+        { data: sigs },
+        { data: trds },
+        { count: btCount },
+      ] = await Promise.all([
+        adminSupabase.from('user_profiles').select('*').eq('user_id', userId!).maybeSingle(),
+        adminSupabase.from('subscriptions').select('*').eq('user_id', userId!).maybeSingle(),
+        adminSupabase.from('broker_accounts').select('id, label, platform, connection_status, last_balance').eq('user_id', userId!),
+        adminSupabase.from('telegram_channels').select('id, display_name, channel_username, is_active, last_live_at').eq('user_id', userId!),
+        adminSupabase.from('signals').select('id, status, raw_message, created_at, telegram_channels(display_name)').eq('user_id', userId!).order('created_at', { ascending: false }).limit(20),
+        adminSupabase.from('trades').select('id, symbol, direction, status, profit, opened_at').eq('user_id', userId!).order('opened_at', { ascending: false }).limit(20),
+        adminSupabase.from('backtest_runs').select('*', { count: 'exact', head: true }).eq('user_id', userId!),
+      ]);
+
+      setProfile(prof as UserProfile);
+      setSubscription(sub as Subscription);
+      setBrokers(brok ?? []);
+      setChannels(chans ?? []);
+      setSignals(sigs ?? []);
+      setTrades(trds ?? []);
+      setBacktestCount(btCount ?? 0);
+      setLoading(false);
+    }
+    load();
+  }, [userId]);
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="skeleton h-8 w-48" />
+        <div className="grid grid-cols-2 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => <div key={i} className="card p-6 skeleton h-32" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return <div className="text-slate-400 text-center py-16">User not found</div>;
+  }
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={() => navigate('/users')}>
+          <ArrowLeft className="w-4 h-4" /> Back
+        </Button>
+        <div>
+          <h1 className="page-title">{profile.display_name ?? profile.user_id.slice(0, 8)}</h1>
+          <p className="page-subtitle font-mono text-xs">{profile.user_id}</p>
+        </div>
+        {profile.is_admin && <StatusBadge status="active" />}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Profile */}
+        <Card>
+          <CardHeader><h3 className="text-sm font-semibold">Profile</h3></CardHeader>
+          <CardContent className="p-4">
+            <InfoRow label="Display Name" value={profile.display_name} />
+            <InfoRow label="First / Last" value={[profile.first_name, profile.last_name].filter(Boolean).join(' ') || null} />
+            <InfoRow label="Username" value={profile.username} />
+            <InfoRow label="Country" value={profile.country} />
+            <InfoRow label="City" value={profile.city} />
+            <InfoRow label="Timezone" value={profile.timezone} />
+            <InfoRow label="Base Currency" value={profile.base_currency} />
+            <InfoRow label="Copier" value={profile.copier_paused ? <span className="text-warning-600 dark:text-warning-400 font-medium">Paused</span> : <span className="text-success-600 dark:text-success-400 font-medium">Active</span>} />
+            <InfoRow label="Onboarded" value={profile.onboarding_completed_at ? formatDate(profile.onboarding_completed_at) : 'Not completed'} />
+            <InfoRow label="Email Verified" value={profile.email_verified_at ? formatDate(profile.email_verified_at) : 'Not verified'} />
+            <InfoRow label="Admin Until" value={profile.admin_until ? formatDateOnly(profile.admin_until) : (profile.is_admin ? 'Permanent' : '—')} />
+            <InfoRow label="Referred By" value={profile.referred_by_user_id ? <span className="font-mono text-xs">{profile.referred_by_user_id.slice(0, 8)}...</span> : null} />
+            <InfoRow label="Joined" value={formatDate(profile.created_at)} />
+          </CardContent>
+        </Card>
+
+        {/* Subscription */}
+        <Card>
+          <CardHeader><h3 className="text-sm font-semibold">Subscription</h3></CardHeader>
+          <CardContent className="p-4">
+            {subscription ? (
+              <>
+                <InfoRow label="Plan" value={<StatusBadge status={subscription.plan} />} />
+                <InfoRow label="Status" value={<StatusBadge status={subscription.status} />} />
+                <InfoRow label="Extra Accounts" value={subscription.extra_accounts} />
+                <InfoRow label="Period End" value={formatDateOnly(subscription.current_period_end)} />
+                <InfoRow label="Trial Ends" value={formatDateOnly(subscription.trial_ends_at)} />
+                <InfoRow label="Stripe Customer" value={<span className="font-mono text-xs">{subscription.stripe_customer_id ?? '—'}</span>} />
+                <InfoRow label="Stripe Sub ID" value={<span className="font-mono text-xs break-all">{subscription.stripe_subscription_id ?? '—'}</span>} />
+              </>
+            ) : (
+              <p className="text-slate-400 text-sm">No subscription</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Quick stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        {[
+          { icon: Server, label: 'Broker Accounts', value: brokers.length },
+          { icon: MessageSquare, label: 'Telegram Channels', value: channels.length },
+          { icon: Zap, label: 'Signals (recent)', value: signals.length },
+          { icon: TrendingUp, label: 'Trades (recent)', value: trades.length },
+          { icon: FlaskConical, label: 'Backtests', value: backtestCount },
+        ].map(stat => (
+          <div key={stat.label} className="stat-card text-center">
+            <stat.icon className="w-5 h-5 mx-auto text-primary-500 mb-2" />
+            <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{stat.value}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Broker accounts */}
+      <Card>
+        <CardHeader><h3 className="text-sm font-semibold">Broker Accounts ({brokers.length})</h3></CardHeader>
+        <div className="overflow-x-auto">
+          <table className="table-base">
+            <thead><tr><th>Label</th><th>Platform</th><th>Status</th><th>Balance</th></tr></thead>
+            <tbody>
+              {brokers.length === 0 ? (
+                <tr><td colSpan={4} className="text-center py-6 text-slate-400">No broker accounts</td></tr>
+              ) : brokers.map((b: any) => (
+                <tr key={b.id}>
+                  <td className="font-medium">{b.label}</td>
+                  <td>{b.platform}</td>
+                  <td><StatusBadge status={b.connection_status} /></td>
+                  <td>{formatCurrency(b.last_balance)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Telegram channels */}
+      <Card>
+        <CardHeader><h3 className="text-sm font-semibold">Telegram Channels ({channels.length})</h3></CardHeader>
+        <div className="overflow-x-auto">
+          <table className="table-base">
+            <thead><tr><th>Name</th><th>Username</th><th>Active</th><th>Last Live</th></tr></thead>
+            <tbody>
+              {channels.length === 0 ? (
+                <tr><td colSpan={4} className="text-center py-6 text-slate-400">No channels</td></tr>
+              ) : channels.map((c: any) => (
+                <tr key={c.id}>
+                  <td className="font-medium">{c.display_name}</td>
+                  <td className="text-slate-500">{c.channel_username}</td>
+                  <td><StatusBadge status={c.is_active ? 'active' : 'inactive'} /></td>
+                  <td className="text-xs text-slate-400">{formatDate(c.last_live_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Recent signals */}
+      <Card>
+        <CardHeader><h3 className="text-sm font-semibold">Recent Signals (last 20)</h3></CardHeader>
+        <div className="overflow-x-auto">
+          <table className="table-base">
+            <thead><tr><th>Status</th><th>Channel</th><th>Message</th><th>Created</th></tr></thead>
+            <tbody>
+              {signals.length === 0 ? (
+                <tr><td colSpan={4} className="text-center py-6 text-slate-400">No signals</td></tr>
+              ) : signals.map((s: any) => (
+                <tr key={s.id} className="cursor-pointer" onClick={() => setExpandedSignalId(prev => prev === s.id ? null : s.id)}>
+                  <td><StatusBadge status={s.status} /></td>
+                  <td className="text-xs text-slate-500">{(s.telegram_channels as any)?.display_name ?? '—'}</td>
+                  <td className="max-w-xs text-xs text-slate-500">
+                    {expandedSignalId === s.id ? (
+                      <pre className="whitespace-pre-wrap break-words text-xs text-slate-700 dark:text-slate-300 font-sans max-w-lg">{s.raw_message ?? '—'}</pre>
+                    ) : (
+                      truncate(s.raw_message, 60)
+                    )}
+                  </td>
+                  <td className="text-xs text-slate-400">{formatDate(s.created_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Recent trades */}
+      <Card>
+        <CardHeader><h3 className="text-sm font-semibold">Recent Trades (last 20)</h3></CardHeader>
+        <div className="overflow-x-auto">
+          <table className="table-base">
+            <thead><tr><th>Symbol</th><th>Direction</th><th>Status</th><th>P&L</th><th>Opened</th></tr></thead>
+            <tbody>
+              {trades.length === 0 ? (
+                <tr><td colSpan={5} className="text-center py-6 text-slate-400">No trades</td></tr>
+              ) : trades.map((t: any) => (
+                <tr key={t.id}>
+                  <td className="font-medium">{t.symbol}</td>
+                  <td><StatusBadge status={t.direction} /></td>
+                  <td><StatusBadge status={t.status} /></td>
+                  <td className={t.profit != null ? (t.profit >= 0 ? 'text-success-600 dark:text-success-400 font-medium' : 'text-error-600 dark:text-error-400 font-medium') : ''}>
+                    {formatCurrency(t.profit)}
+                  </td>
+                  <td className="text-xs text-slate-400">{formatDate(t.opened_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
