@@ -47,7 +47,7 @@ export function buildCampaignEmailHtml(options: CampaignEmailOptions): string {
         ${featureList.map((f) => `
           <tr>
             <td style="padding:6px 0;vertical-align:top;width:24px;">
-              <span style="display:inline-block;width:6px;height:6px;background-color:#2563eb;border-radius:50%;margin-top:6px;"></span>
+              <span style="display:inline-block;width:6px;height:6px;background-color:#0d9488;border-radius:50%;margin-top:6px;"></span>
             </td>
             <td style="padding:6px 0;color:#475569;font-size:14px;line-height:1.5;">${f}</td>
           </tr>
@@ -58,7 +58,7 @@ export function buildCampaignEmailHtml(options: CampaignEmailOptions): string {
   const infoBoxHtml = infoBox
     ? `<table cellpadding="0" cellspacing="0" style="margin:24px 0;width:100%;border-radius:8px;overflow:hidden;">
         <tr>
-          <td style="background-color:#f1f5f9;padding:20px 24px;border-left:4px solid #2563eb;">
+          <td style="background-color:#f1f5f9;padding:20px 24px;border-left:4px solid #0d9488;">
             <p style="margin:0;font-weight:600;font-size:14px;color:#0f172a;">${infoBox.title}</p>
             <div style="color:#475569;font-size:13px;line-height:1.6;">${infoBox.bodyHtml}</div>
           </td>
@@ -67,7 +67,7 @@ export function buildCampaignEmailHtml(options: CampaignEmailOptions): string {
     : "";
 
   const secondaryCtaHtml = secondaryCta
-    ? `<a href="${secondaryCta.url}" style="display:inline-block;margin-left:16px;padding:12px 24px;font-size:14px;font-weight:600;color:#2563eb;text-decoration:none;border:1px solid #2563eb;border-radius:8px;">${secondaryCta.label}</a>`
+    ? `<a href="${secondaryCta.url}" style="display:inline-block;margin-left:16px;padding:12px 24px;font-size:14px;font-weight:600;color:#0d9488;text-decoration:none;border:1px solid #0d9488;border-radius:8px;">${secondaryCta.label}</a>`
     : "";
 
   return `<!DOCTYPE html>
@@ -89,7 +89,7 @@ export function buildCampaignEmailHtml(options: CampaignEmailOptions): string {
 
           <!-- Header -->
           <tr>
-            <td style="background-color:#0f172a;padding:28px 40px;text-align:center;">
+            <td style="background-color:#0f2b2a;padding:28px 40px;text-align:center;">
               <a href="${appUrl}" style="text-decoration:none;">
                 <img src="${logoUrl}" alt="TSCopier" width="140" style="display:inline-block;max-width:140px;height:auto;" />
               </a>
@@ -99,7 +99,7 @@ export function buildCampaignEmailHtml(options: CampaignEmailOptions): string {
           <!-- Eyebrow -->
           <tr>
             <td style="padding:32px 40px 0 40px;">
-              <p style="margin:0 0 8px 0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#2563eb;">${eyebrow}</p>
+              <p style="margin:0 0 8px 0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#0d9488;">${eyebrow}</p>
               <h1 style="margin:0 0 24px 0;font-size:22px;font-weight:700;color:#0f172a;line-height:1.3;">${title}</h1>
             </td>
           </tr>
@@ -120,7 +120,7 @@ export function buildCampaignEmailHtml(options: CampaignEmailOptions): string {
               <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
                 <tr>
                   <td>
-                    <a href="${primaryCta.url}" style="display:inline-block;padding:14px 32px;background-color:#2563eb;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px;box-shadow:0 2px 4px rgba(37,99,235,0.3);">${primaryCta.label}</a>
+                    <a href="${primaryCta.url}" style="display:inline-block;padding:14px 32px;background-color:#0d9488;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px;box-shadow:0 2px 4px rgba(13,148,136,0.3);">${primaryCta.label}</a>
                     ${secondaryCtaHtml}
                   </td>
                 </tr>
