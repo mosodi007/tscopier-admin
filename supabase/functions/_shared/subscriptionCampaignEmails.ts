@@ -58,7 +58,7 @@ function buildNoSubscriptionHtml(
       label: "View plans & subscribe",
       url: `${appUrl}/pricing`,
     },
-    closingHtml: `Questions? Just reply to this email.`,
+    closingHtml: `Questions? Email us at <a href="mailto:support@tscopier.ai" style="color:#0d9488;text-decoration:underline;">support@tscopier.ai</a><br/>Live support is available 24/7 via the app.`,
     unsubscribeUrl,
   });
 }
@@ -86,7 +86,7 @@ function buildTrialExpiredHtml(
       label: "Subscribe now",
       url: `${appUrl}/pricing`,
     },
-    closingHtml: `Questions? Just reply to this email.`,
+    closingHtml: `Questions? Email us at <a href="mailto:support@tscopier.ai" style="color:#0d9488;text-decoration:underline;">support@tscopier.ai</a><br/>Live support is available 24/7 via the app.`,
     unsubscribeUrl,
   });
 }
