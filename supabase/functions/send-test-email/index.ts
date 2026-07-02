@@ -141,7 +141,7 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "TSCopier <noreply@tscopier.com>",
+        from: "TSCopier <noreply@tscopier.ai>",
         to: [to],
         subject: "[TEST] Start copying signals - activate your TSCopier subscription",
         html: noSubscriptionHtml,
@@ -158,7 +158,7 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "TSCopier <noreply@tscopier.com>",
+        from: "TSCopier <noreply@tscopier.ai>",
         to: [to],
         subject: "[TEST] Your TSCopier trial has ended - subscribe to keep copying",
         html: trialExpiredHtml,

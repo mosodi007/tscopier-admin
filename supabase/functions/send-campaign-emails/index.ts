@@ -171,7 +171,7 @@ async function sendEmail(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "TSCopier <noreply@tscopier.com>",
+        from: "TSCopier <noreply@tscopier.ai>",
         to: [to],
         subject,
         html,
