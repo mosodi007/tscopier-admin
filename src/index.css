@@ -1,0 +1,163 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-bg: #f8fafc;
+    --color-surface: #ffffff;
+    --color-border: #e2e8f0;
+    --color-text: #0f172a;
+    --color-text-muted: #64748b;
+    --sidebar-width: 256px;
+  }
+
+  .dark {
+    --color-bg: #0f172a;
+    --color-surface: #1e293b;
+    --color-border: #334155;
+    --color-text: #f1f5f9;
+    --color-text-muted: #94a3b8;
+  }
+
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-card;
+  }
+
+  .card-hover {
+    @apply card transition-shadow duration-200 hover:shadow-card-hover;
+  }
+
+  .input-base {
+    @apply block w-full rounded-lg border border-slate-200 dark:border-slate-600
+           bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100
+           px-3 py-2 text-sm
+           placeholder-slate-400 dark:placeholder-slate-500
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+           transition-colors duration-150;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg font-medium
+           transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed select-none;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+  }
+
+  .btn-secondary {
+    @apply btn bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200
+           hover:bg-slate-200 dark:hover:bg-slate-600 focus:ring-slate-400;
+  }
+
+  .btn-ghost {
+    @apply btn text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700
+           focus:ring-slate-400;
+  }
+
+  .btn-danger {
+    @apply btn bg-error-600 text-white hover:bg-error-700 focus:ring-error-500;
+  }
+
+  .btn-sm {
+    @apply text-xs px-2.5 py-1.5;
+  }
+
+  .btn-md {
+    @apply text-sm px-4 py-2;
+  }
+
+  .btn-lg {
+    @apply text-base px-6 py-3;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .skeleton {
+    @apply bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200
+           dark:from-slate-700 dark:via-slate-600 dark:to-slate-700
+           bg-[length:200%_100%] animate-shimmer rounded;
+  }
+
+  .table-base {
+    @apply w-full text-sm;
+  }
+
+  .table-base th {
+    @apply px-3 lg:px-4 py-2.5 lg:py-3 text-left text-xs font-semibold uppercase tracking-wide
+           text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900
+           border-b border-slate-200 dark:border-slate-700 whitespace-nowrap;
+  }
+
+  .table-base td {
+    @apply px-3 lg:px-4 py-2.5 lg:py-3 text-slate-700 dark:text-slate-300
+           border-b border-slate-100 dark:border-slate-800;
+  }
+
+  .table-base tbody tr:hover td {
+    @apply bg-slate-50 dark:bg-slate-800/50;
+  }
+
+  .table-base tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
+           text-slate-600 dark:text-slate-400 transition-colors duration-150
+           hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-slate-100;
+  }
+
+  .sidebar-link.active {
+    @apply bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400;
+  }
+
+  .page-header {
+    @apply mb-4 lg:mb-6;
+  }
+
+  .page-title {
+    @apply text-xl lg:text-2xl font-semibold text-slate-900 dark:text-slate-100;
+  }
+
+  .page-subtitle {
+    @apply mt-1 text-xs lg:text-sm text-slate-500 dark:text-slate-400;
+  }
+
+  .stat-card {
+    @apply card p-4 lg:p-6;
+  }
+
+  .stat-value {
+    @apply text-2xl lg:text-3xl font-bold text-slate-900 dark:text-slate-100;
+  }
+
+  .stat-label {
+    @apply text-xs lg:text-sm text-slate-500 dark:text-slate-400 mt-1;
+  }
+
+  .filter-bar {
+    @apply flex flex-wrap items-center gap-2 lg:gap-3 p-3 lg:p-4 bg-slate-50 dark:bg-slate-900/50
+           border-b border-slate-200 dark:border-slate-700 rounded-xl;
+  }
+}
