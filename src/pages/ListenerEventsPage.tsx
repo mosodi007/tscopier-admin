@@ -16,7 +16,7 @@ interface EventRow {
   channel_name: string | null;
   telegram_message_id: number | null;
   event_type: string;
-  detail: string | null;
+  detail: string | Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -88,7 +88,7 @@ export function ListenerEventsPage() {
     { key: 'channel_name', label: 'Channel', render: r => <span className="text-xs text-slate-500">{r.channel_name ?? '—'}</span> },
     { key: 'event_type', label: 'Event Type', render: r => <StatusBadge status={r.event_type} dot /> },
     { key: 'telegram_message_id', label: 'TG Msg ID', render: r => <span className="font-mono text-xs text-slate-400">{r.telegram_message_id ?? '—'}</span> },
-    { key: 'detail', label: 'Detail', render: r => <span className="text-xs text-slate-500 max-w-xs block truncate">{r.detail ?? '—'}</span> },
+    { key: 'detail', label: 'Detail', render: r => <span className="text-xs text-slate-500 max-w-xs block truncate">{r.detail == null ? '—' : typeof r.detail === 'object' ? JSON.stringify(r.detail) : r.detail}</span> },
     { key: 'created_at', label: 'Created', render: r => <span className="text-xs text-slate-400">{formatDate(r.created_at)}</span> },
   ];
 
