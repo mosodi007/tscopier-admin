@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Server, MessageSquare, Zap, TrendingUp, FlaskConical } from 'lucide-react';
+import { ArrowLeft, Server, MessageSquare, Zap, TrendingUp, FlaskConical, Mail, Send } from 'lucide-react';
 import { authSupabase as adminSupabase } from '../lib/adminSupabase';
 import { formatDate, formatDateOnly, formatCurrency, truncate } from '../lib/formatters';
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
@@ -61,6 +61,34 @@ export function UserDetailPage() {
   const [backtestCount, setBacktestCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [expandedSignalId, setExpandedSignalId] = useState<string | null>(null);
+  const [emailSending, setEmailSending] = useState<string | null>(null);
+  const [emailResult, setEmailResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [showEmailMenu, setShowEmailMenu] = useState(false);
+
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+
+  async function sendSubscriptionEmail(campaign: string) {
+    setEmailSending(campaign);
+    setEmailResult(null);
+    setShowEmailMenu(false);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-subscription-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, campaign }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setEmailResult({ type: 'error', message: data.error || 'Failed to send email' });
+      } else {
+        setEmailResult({ type: 'success', message: `Sent "${campaign.replace(/_/g, ' ')}" email to ${data.email}` });
+      }
+    } catch (err) {
+      setEmailResult({ type: 'error', message: (err as Error).message });
+    } finally {
+      setEmailSending(null);
+    }
+  }
 
   useEffect(() => {
     if (!userId) return;
@@ -121,7 +149,55 @@ export function UserDetailPage() {
           <p className="page-subtitle font-mono text-xs">{profile.user_id}</p>
         </div>
         {profile.is_admin && <StatusBadge status="active" />}
+
+        <div className="ml-auto relative">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowEmailMenu(!showEmailMenu)}
+            disabled={!!emailSending}
+          >
+            {emailSending ? (
+              <>
+                <Send className="w-4 h-4 animate-pulse" /> Sending...
+              </>
+            ) : (
+              <>
+                <Mail className="w-4 h-4" /> Send Subscription Email
+              </>
+            )}
+          </Button>
+
+          {showEmailMenu && (
+            <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50 overflow-hidden">
+              <button
+                className="w-full text-left px-4 py-3 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border-b border-slate-100 dark:border-slate-700"
+                onClick={() => sendSubscriptionEmail('no_subscription_nudge')}
+              >
+                <span className="font-medium text-slate-900 dark:text-slate-100">No Subscription Nudge</span>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Remind user to activate a plan</p>
+              </button>
+              <button
+                className="w-full text-left px-4 py-3 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                onClick={() => sendSubscriptionEmail('trial_expired')}
+              >
+                <span className="font-medium text-slate-900 dark:text-slate-100">Trial Expired</span>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Notify that trial has ended</p>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {emailResult && (
+        <div className={`px-4 py-3 rounded-lg text-sm ${
+          emailResult.type === 'success'
+            ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+            : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
+        }`}>
+          {emailResult.message}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Profile */}
