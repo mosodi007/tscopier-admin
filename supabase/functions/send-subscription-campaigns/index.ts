@@ -24,7 +24,7 @@ const LOGO_URL = resolveEmailLogoUrl({
   variant: "dark",
   explicitUrl: Deno.env.get("EMAIL_LOGO_URL"),
 });
-const RESEND_FROM = Deno.env.get("RESEND_CAMPAIGN_FROM") || "TScopier <noreply@tscopier.ai>";
+const RESEND_FROM = Deno.env.get("RESEND_CAMPAIGN_FROM") || "TScopier <account@tscopier.ai>";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
