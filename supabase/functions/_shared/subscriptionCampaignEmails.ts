@@ -9,19 +9,22 @@ export type { EmailRecipient };
 
 export type SubscriptionCampaignType =
   | "no_subscription_nudge"
-  | "trial_expired";
+  | "trial_expired"
+  | "invoice_due";
 
 export const SUBSCRIPTION_CAMPAIGN_SUBJECTS: Record<SubscriptionCampaignType, string> = {
   no_subscription_nudge:
     "Activate TScopier — start copying Telegram signals to your broker",
   trial_expired:
     "Your TScopier trial ended — subscribe to resume copying",
+  invoice_due:
+    "Action required — your TScopier invoice is overdue",
 };
 
 export function isSubscriptionCampaignType(
   value: string,
 ): value is SubscriptionCampaignType {
-  return value === "no_subscription_nudge" || value === "trial_expired";
+  return value === "no_subscription_nudge" || value === "trial_expired" || value === "invoice_due";
 }
 
 export function getEmailUnsubscribeUrl(
@@ -91,17 +94,59 @@ function buildTrialExpiredHtml(
   });
 }
 
+export interface InvoiceDueParams {
+  amount_due?: string;
+  invoice_url?: string;
+}
+
+function buildInvoiceDueHtml(
+  recipient: EmailRecipient,
+  unsubscribeUrl: string,
+  appUrl: string,
+  logoUrl: string,
+  params?: InvoiceDueParams,
+): string {
+  const name = recipientFirstName(recipient);
+  const amountLine = params?.amount_due
+    ? ` of <strong style="color:#0f172a;">$${params.amount_due}</strong>`
+    : "";
+  const ctaUrl = params?.invoice_url || `${appUrl}/billing`;
+
+  return buildCampaignEmailHtml({
+    appUrl,
+    logoUrl,
+    preheader: "You have an overdue invoice. Please update your payment method.",
+    eyebrow: "Payment required",
+    title: "Your invoice is overdue",
+    greeting: name,
+    bodyHtml: `
+      <p style="margin:0 0 16px 0;">We were unable to process your recent payment${amountLine} for your TScopier subscription.</p>
+      <p style="margin:0 0 16px 0;">Your account access may be limited until the balance is settled. Please update your payment method or pay the outstanding invoice to restore full service.</p>
+      <p style="margin:0;">If you've already resolved this, please disregard this message.</p>
+    `,
+    primaryCta: {
+      label: "Pay invoice now",
+      url: ctaUrl,
+    },
+    closingHtml: `Need help? Email us at <a href="mailto:billing@tscopier.ai" style="color:#0d9488;text-decoration:underline;">billing@tscopier.ai</a><br/>We're happy to assist with any billing questions.`,
+    unsubscribeUrl,
+  });
+}
+
 export function buildSubscriptionCampaignHtml(
   campaign: SubscriptionCampaignType,
   recipient: EmailRecipient,
   unsubscribeUrl: string,
   appUrl: string,
   logoUrl: string,
+  invoiceParams?: InvoiceDueParams,
 ): string {
   switch (campaign) {
     case "no_subscription_nudge":
       return buildNoSubscriptionHtml(recipient, unsubscribeUrl, appUrl, logoUrl);
     case "trial_expired":
       return buildTrialExpiredHtml(recipient, unsubscribeUrl, appUrl, logoUrl);
+    case "invoice_due":
+      return buildInvoiceDueHtml(recipient, unsubscribeUrl, appUrl, logoUrl, invoiceParams);
   }
 }

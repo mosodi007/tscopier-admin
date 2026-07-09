@@ -95,6 +95,34 @@ export function UserDetailPage() {
     }
   }
 
+  async function sendInvoiceDueEmail() {
+    setEmailSending('invoice_due');
+    setEmailResult(null);
+    setShowEmailMenu(false);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-invoice-due-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setEmailResult({ type: 'error', message: data.error || 'Failed to send invoice email' });
+      } else {
+        const amountMsg = data.amount_due ? ` ($${data.amount_due})` : '';
+        setEmailResult({ type: 'success', message: `Sent invoice due email${amountMsg} to ${data.email}` });
+      }
+    } catch (err) {
+      setEmailResult({ type: 'error', message: (err as Error).message });
+    } finally {
+      setEmailSending(null);
+    }
+  }
+
   useEffect(() => {
     if (!userId) return;
     async function load() {
@@ -168,7 +196,7 @@ export function UserDetailPage() {
               </>
             ) : (
               <>
-                <Mail className="w-4 h-4" /> Send Subscription Email
+                <Mail className="w-4 h-4" /> Send Email
               </>
             )}
           </Button>
@@ -189,6 +217,15 @@ export function UserDetailPage() {
                 <span className="font-medium text-slate-900 dark:text-slate-100">Trial Expired</span>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Notify that trial has ended</p>
               </button>
+              {subscription?.status === 'past_due' && subscription?.stripe_customer_id && (
+                <button
+                  className="w-full text-left px-4 py-3 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors border-t border-slate-100 dark:border-slate-700"
+                  onClick={() => sendInvoiceDueEmail()}
+                >
+                  <span className="font-medium text-amber-700 dark:text-amber-400">Invoice Due</span>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Send overdue invoice reminder from billing</p>
+                </button>
+              )}
             </div>
           )}
         </div>
