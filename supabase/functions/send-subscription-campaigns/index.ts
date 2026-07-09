@@ -17,6 +17,7 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
+const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY")!;
 const APP_URL = (Deno.env.get("VITE_APP_URL") || "https://app.tscopier.ai").replace(/\/$/, "");
 const LOGO_URL = resolveEmailLogoUrl({
   supabaseUrl: SUPABASE_URL,
@@ -25,6 +26,7 @@ const LOGO_URL = resolveEmailLogoUrl({
   explicitUrl: Deno.env.get("EMAIL_LOGO_URL"),
 });
 const RESEND_FROM = Deno.env.get("RESEND_CAMPAIGN_FROM") || "TScopier <account@tscopier.ai>";
+const RESEND_BILLING_FROM = "TScopier Billing <billing@tscopier.ai>";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -44,6 +46,10 @@ interface EmailRecipient {
   email: string;
   display_name: string | null;
   first_name: string | null;
+}
+
+interface InvoiceDueRecipient extends EmailRecipient {
+  stripe_customer_id: string;
 }
 
 function buildNoSubscriptionEmail(
@@ -98,14 +104,48 @@ function buildTrialExpiredEmail(
   });
 }
 
+function buildInvoiceDueEmail(
+  recipient: EmailRecipient,
+  unsubscribeUrl: string,
+  amountDue?: string,
+  invoiceUrl?: string,
+): string {
+  const name = recipientFirstName(recipient);
+  const amountLine = amountDue
+    ? ` of <strong style="color:#0f172a;">$${amountDue}</strong>`
+    : "";
+  const ctaUrl = invoiceUrl || `${APP_URL}/billing`;
+
+  return buildCampaignEmailHtml({
+    appUrl: APP_URL,
+    logoUrl: LOGO_URL,
+    preheader: "You have an overdue invoice. Please update your payment method.",
+    eyebrow: "Payment required",
+    title: "Your invoice is overdue",
+    greeting: name,
+    bodyHtml: `
+      <p style="margin:0 0 16px 0;">We were unable to process your recent payment${amountLine} for your TScopier subscription.</p>
+      <p style="margin:0 0 16px 0;">Your account access may be limited until the balance is settled. Please update your payment method or pay the outstanding invoice to restore full service.</p>
+      <p style="margin:0;">If you've already resolved this, please disregard this message.</p>
+    `,
+    primaryCta: {
+      label: "Pay invoice now",
+      url: ctaUrl,
+    },
+    closingHtml: `Need help? Email us at <a href="mailto:billing@tscopier.ai" style="color:#0d9488;text-decoration:underline;">billing@tscopier.ai</a><br/>We're happy to assist with any billing questions.`,
+    unsubscribeUrl,
+  });
+}
+
 async function sendEmail(
   to: string,
   subject: string,
   html: string,
-): Promise<boolean> {
+  from?: string,
+): Promise<string | null> {
   if (!RESEND_API_KEY) {
     console.error("[send-subscription-campaigns] RESEND_API_KEY missing");
-    return false;
+    return null;
   }
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -115,7 +155,7 @@ async function sendEmail(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: RESEND_FROM,
+        from: from || RESEND_FROM,
         to: [to],
         subject,
         html,
@@ -123,11 +163,42 @@ async function sendEmail(
     });
     if (!res.ok) {
       console.error("[send-subscription-campaigns] Resend error:", await res.text());
+      return null;
     }
-    return res.ok;
+    const data = await res.json();
+    return data.id ?? "sent";
   } catch (err) {
     console.error("[send-subscription-campaigns] send failed:", err);
-    return false;
+    return null;
+  }
+}
+
+async function fetchOpenInvoice(
+  stripeCustomerId: string,
+): Promise<{ id: string; amount_due: number; currency: string; hosted_invoice_url: string | null } | null> {
+  if (!STRIPE_SECRET_KEY) return null;
+  try {
+    const params = new URLSearchParams({
+      customer: stripeCustomerId,
+      status: "open",
+      limit: "1",
+    });
+    const res = await fetch(
+      `https://api.stripe.com/v1/invoices?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${STRIPE_SECRET_KEY}` } },
+    );
+    if (!res.ok) return null;
+    const body = await res.json();
+    if (!body.data?.length) return null;
+    const inv = body.data[0];
+    return {
+      id: inv.id,
+      amount_due: inv.amount_due,
+      currency: inv.currency,
+      hosted_invoice_url: inv.hosted_invoice_url,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -146,17 +217,18 @@ async function processNoSubscriptionNudge(): Promise<number> {
   for (const user of eligibleUsers as EmailRecipient[]) {
     const unsubscribeUrl = getUnsubscribeUrl(user.user_id);
     const html = buildNoSubscriptionEmail(user, unsubscribeUrl);
-    const success = await sendEmail(
+    const resendId = await sendEmail(
       user.email,
       "Activate TScopier — start copying Telegram signals to your broker",
       html,
     );
 
-    if (success) {
+    if (resendId) {
       await supabase.from("email_campaign_log").insert({
         user_id: user.user_id,
         campaign_type: "no_subscription_nudge",
         email_address: user.email,
+        metadata: { triggered_by: "cron", resend_id: resendId },
       });
       sent++;
     }
@@ -180,17 +252,63 @@ async function processTrialExpired(): Promise<number> {
   for (const user of eligibleUsers as EmailRecipient[]) {
     const unsubscribeUrl = getUnsubscribeUrl(user.user_id);
     const html = buildTrialExpiredEmail(user, unsubscribeUrl);
-    const success = await sendEmail(
+    const resendId = await sendEmail(
       user.email,
       "Your TScopier trial ended — subscribe to resume copying",
       html,
     );
 
-    if (success) {
+    if (resendId) {
       await supabase.from("email_campaign_log").insert({
         user_id: user.user_id,
         campaign_type: "trial_expired",
         email_address: user.email,
+        metadata: { triggered_by: "cron", resend_id: resendId },
+      });
+      sent++;
+    }
+  }
+
+  return sent;
+}
+
+async function processInvoiceDue(): Promise<number> {
+  const { data: eligibleUsers, error } = await supabase.rpc(
+    "get_invoice_due_recipients",
+  );
+
+  if (error) {
+    console.error("[send-subscription-campaigns] invoice_due rpc:", error.message);
+    return 0;
+  }
+  if (!eligibleUsers?.length) return 0;
+
+  let sent = 0;
+  for (const user of eligibleUsers as InvoiceDueRecipient[]) {
+    const invoice = await fetchOpenInvoice(user.stripe_customer_id);
+    const amountDue = invoice ? (invoice.amount_due / 100).toFixed(2) : undefined;
+    const invoiceUrl = invoice?.hosted_invoice_url || undefined;
+
+    const unsubscribeUrl = getUnsubscribeUrl(user.user_id);
+    const html = buildInvoiceDueEmail(user, unsubscribeUrl, amountDue, invoiceUrl);
+    const resendId = await sendEmail(
+      user.email,
+      "Action required — your TScopier invoice is overdue",
+      html,
+      RESEND_BILLING_FROM,
+    );
+
+    if (resendId) {
+      await supabase.from("email_campaign_log").insert({
+        user_id: user.user_id,
+        campaign_type: "invoice_due",
+        email_address: user.email,
+        metadata: {
+          triggered_by: "cron",
+          resend_id: resendId,
+          invoice_id: invoice?.id ?? null,
+          amount_due: amountDue ?? null,
+        },
       });
       sent++;
     }
@@ -207,12 +325,14 @@ Deno.serve(async (req: Request) => {
   try {
     const nudgeSent = await processNoSubscriptionNudge();
     const trialSent = await processTrialExpired();
+    const invoiceSent = await processInvoiceDue();
 
     return new Response(
       JSON.stringify({
         success: true,
         no_subscription_nudge_sent: nudgeSent,
         trial_expired_sent: trialSent,
+        invoice_due_sent: invoiceSent,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
