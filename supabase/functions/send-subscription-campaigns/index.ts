@@ -81,8 +81,12 @@ function buildNoSubscriptionEmail(
 function buildTrialExpiredEmail(
   recipient: EmailRecipient,
   unsubscribeUrl: string,
+  invoiceUrl?: string,
 ): string {
   const name = recipientFirstName(recipient);
+  const hasInvoice = !!invoiceUrl;
+  const ctaUrl = invoiceUrl || `${APP_URL}/pricing`;
+  const ctaLabel = hasInvoice ? "Pay & reactivate" : "Subscribe now";
 
   return buildCampaignEmailHtml({
     appUrl: APP_URL,
@@ -96,8 +100,8 @@ function buildTrialExpiredEmail(
       <p style="margin:0;">Your broker connections, channels, and settings are still saved. Subscribe to resume automated copying instantly.</p>
     `,
     primaryCta: {
-      label: "Subscribe now",
-      url: `${APP_URL}/pricing`,
+      label: ctaLabel,
+      url: ctaUrl,
     },
     closingHtml: `Questions? Email us at <a href="mailto:support@tscopier.ai" style="color:#0d9488;text-decoration:underline;">support@tscopier.ai</a><br/>Live support is available 24/7 via the app.`,
     unsubscribeUrl,
@@ -249,9 +253,18 @@ async function processTrialExpired(): Promise<number> {
   if (!eligibleUsers?.length) return 0;
 
   let sent = 0;
-  for (const user of eligibleUsers as EmailRecipient[]) {
+  for (const user of eligibleUsers as InvoiceDueRecipient[]) {
+    let invoiceUrl: string | undefined;
+    let invoiceId: string | null = null;
+
+    if (user.stripe_customer_id) {
+      const invoice = await fetchOpenInvoice(user.stripe_customer_id);
+      invoiceUrl = invoice?.hosted_invoice_url || undefined;
+      invoiceId = invoice?.id ?? null;
+    }
+
     const unsubscribeUrl = getUnsubscribeUrl(user.user_id);
-    const html = buildTrialExpiredEmail(user, unsubscribeUrl);
+    const html = buildTrialExpiredEmail(user, unsubscribeUrl, invoiceUrl);
     const resendId = await sendEmail(
       user.email,
       "Your TScopier trial ended — subscribe to resume copying",
@@ -263,7 +276,7 @@ async function processTrialExpired(): Promise<number> {
         user_id: user.user_id,
         campaign_type: "trial_expired",
         email_address: user.email,
-        metadata: { triggered_by: "cron", resend_id: resendId },
+        metadata: { triggered_by: "cron", resend_id: resendId, invoice_id: invoiceId },
       });
       sent++;
     }
