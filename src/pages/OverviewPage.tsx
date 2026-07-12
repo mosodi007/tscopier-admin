@@ -52,11 +52,10 @@ export function OverviewPage() {
 
   useEffect(() => {
     async function fetchStats() {
-      const TIMEZONE_OFFSET_HOURS = 1; // GMT+1
       const now = new Date();
-      const localNow = new Date(now.getTime() + TIMEZONE_OFFSET_HOURS * 3600000);
-      const todayBoundary = new Date(Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate()) - TIMEZONE_OFFSET_HOURS * 3600000);
-      const weekBoundary = new Date(todayBoundary.getTime() - localNow.getUTCDay() * 86400000);
+      const todayBoundary = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekBoundary = new Date(todayBoundary);
+      weekBoundary.setDate(weekBoundary.getDate() - weekBoundary.getDay());
 
       const [
         { count: totalUsers },
