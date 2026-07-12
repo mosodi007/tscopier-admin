@@ -58,7 +58,7 @@ export function SignalsPage() {
       .range(from, to);
 
     if (statusFilter) q = q.eq('status', statusFilter);
-    if (search) q = q.or(`user_id.ilike.%${search}%`);
+    if (search) q = q.or(`user_id::text.ilike.%${search}%`);
     if (dateFrom) q = q.gte('created_at', dateFrom);
     if (dateTo) q = q.lte('created_at', dateTo + 'T23:59:59Z');
 

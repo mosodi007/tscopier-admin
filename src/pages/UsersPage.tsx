@@ -57,7 +57,7 @@ export function UsersPage() {
         .range(from, to);
 
       if (search.trim()) {
-        q = q.or(`display_name.ilike.%${search.trim()}%,user_id.ilike.%${search.trim()}%`);
+        q = q.or(`display_name.ilike.%${search.trim()}%,user_id::text.ilike.%${search.trim()}%`);
       }
 
       const { data: profiles, count, error: profileErr } = await q;
