@@ -27,6 +27,15 @@ interface UserRow {
 }
 
 const PAGE_SIZE = 50;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function buildSearchFilter(term: string): string {
+  const t = term.trim();
+  if (UUID_RE.test(t)) {
+    return `display_name.ilike.%${t}%,user_id.eq.${t}`;
+  }
+  return `display_name.ilike.%${t}%`;
+}
 
 export function UsersPage() {
   const [searchParams] = useSearchParams();
@@ -55,7 +64,7 @@ export function UsersPage() {
     const { data: results } = await adminSupabase
       .from('user_profiles')
       .select('user_id, display_name')
-      .or(`display_name.ilike.%${term.trim()}%,user_id::text.ilike.%${term.trim()}%`)
+      .or(buildSearchFilter(term.trim()))
       .order('created_at', { ascending: false })
       .limit(8);
     setSuggestions(results ?? []);
@@ -121,7 +130,7 @@ export function UsersPage() {
         .range(from, to);
 
       if (search.trim()) {
-        q = q.or(`display_name.ilike.%${search.trim()}%,user_id::text.ilike.%${search.trim()}%`);
+        q = q.or(buildSearchFilter(search.trim()));
       }
 
       const { data: profiles, count, error: profileErr } = await q;

@@ -58,7 +58,12 @@ export function SignalsPage() {
       .range(from, to);
 
     if (statusFilter) q = q.eq('status', statusFilter);
-    if (search) q = q.or(`user_id::text.ilike.%${search}%`);
+    if (search) {
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (UUID_RE.test(search.trim())) {
+        q = q.eq('user_id', search.trim());
+      }
+    }
     if (dateFrom) q = q.gte('created_at', dateFrom);
     if (dateTo) q = q.lte('created_at', dateTo + 'T23:59:59Z');
 
