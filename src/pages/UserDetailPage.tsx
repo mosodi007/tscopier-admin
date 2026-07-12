@@ -39,6 +39,15 @@ interface Subscription {
   created_at: string;
 }
 
+interface TelegramAccount {
+  phone_number: string | null;
+  is_active: boolean;
+  listener_engine: string | null;
+  created_at: string;
+  telegram_user_id: string | null;
+  linked_at: string | null;
+}
+
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start gap-4 py-2 border-b border-slate-100 dark:border-slate-700 last:border-0">
@@ -54,6 +63,7 @@ export function UserDetailPage() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [telegram, setTelegram] = useState<TelegramAccount | null>(null);
   const [brokers, setBrokers] = useState<any[]>([]);
   const [channels, setChannels] = useState<any[]>([]);
   const [signals, setSignals] = useState<any[]>([]);
@@ -134,6 +144,8 @@ export function UserDetailPage() {
         { data: sigs },
         { data: trds },
         { count: btCount },
+        { data: tgSession },
+        { data: tgClaim },
       ] = await Promise.all([
         adminSupabase.from('user_profiles').select('*').eq('user_id', userId!).maybeSingle(),
         adminSupabase.from('subscriptions').select('*').eq('user_id', userId!).maybeSingle(),
@@ -142,10 +154,20 @@ export function UserDetailPage() {
         adminSupabase.from('signals').select('id, status, raw_message, created_at, telegram_channels(display_name)').eq('user_id', userId!).order('created_at', { ascending: false }).limit(20),
         adminSupabase.from('trades').select('id, symbol, direction, status, profit, opened_at').eq('user_id', userId!).order('opened_at', { ascending: false }).limit(20),
         adminSupabase.from('backtest_runs').select('*', { count: 'exact', head: true }).eq('user_id', userId!),
+        adminSupabase.from('telegram_sessions').select('phone_number, is_active, listener_engine, created_at').eq('user_id', userId!).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        adminSupabase.from('telegram_account_claims').select('telegram_user_id, linked_at').eq('user_id', userId!).maybeSingle(),
       ]);
 
       setProfile(prof as UserProfile);
       setSubscription(sub as Subscription);
+      setTelegram(tgSession || tgClaim ? {
+        phone_number: (tgSession as any)?.phone_number ?? null,
+        is_active: (tgSession as any)?.is_active ?? false,
+        listener_engine: (tgSession as any)?.listener_engine ?? null,
+        created_at: (tgSession as any)?.created_at ?? (tgClaim as any)?.linked_at ?? '',
+        telegram_user_id: (tgClaim as any)?.telegram_user_id?.toString() ?? null,
+        linked_at: (tgClaim as any)?.linked_at ?? null,
+      } : null);
       setBrokers(brok ?? []);
       setChannels(chans ?? []);
       setSignals(sigs ?? []);
@@ -262,25 +284,50 @@ export function UserDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Subscription */}
-        <Card>
-          <CardHeader><h3 className="text-sm font-semibold">Subscription</h3></CardHeader>
-          <CardContent className="p-4">
-            {subscription ? (
-              <>
-                <InfoRow label="Plan" value={<StatusBadge status={subscription.plan} />} />
-                <InfoRow label="Status" value={<StatusBadge status={subscription.status} />} />
-                <InfoRow label="Extra Accounts" value={subscription.extra_accounts} />
-                <InfoRow label="Period End" value={formatDateOnly(subscription.current_period_end)} />
-                <InfoRow label="Trial Ends" value={formatDateOnly(subscription.trial_ends_at)} />
-                <InfoRow label="Stripe Customer" value={<span className="font-mono text-xs">{subscription.stripe_customer_id ?? '—'}</span>} />
-                <InfoRow label="Stripe Sub ID" value={<span className="font-mono text-xs break-all">{subscription.stripe_subscription_id ?? '—'}</span>} />
-              </>
-            ) : (
-              <p className="text-slate-400 text-sm">No subscription</p>
-            )}
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          {/* Subscription */}
+          <Card>
+            <CardHeader><h3 className="text-sm font-semibold">Subscription</h3></CardHeader>
+            <CardContent className="p-4">
+              {subscription ? (
+                <>
+                  <InfoRow label="Plan" value={<StatusBadge status={subscription.plan} />} />
+                  <InfoRow label="Status" value={<StatusBadge status={subscription.status} />} />
+                  <InfoRow label="Extra Accounts" value={subscription.extra_accounts} />
+                  <InfoRow label="Period End" value={formatDateOnly(subscription.current_period_end)} />
+                  <InfoRow label="Trial Ends" value={formatDateOnly(subscription.trial_ends_at)} />
+                  <InfoRow label="Stripe Customer" value={<span className="font-mono text-xs">{subscription.stripe_customer_id ?? '—'}</span>} />
+                  <InfoRow label="Stripe Sub ID" value={<span className="font-mono text-xs break-all">{subscription.stripe_subscription_id ?? '—'}</span>} />
+                </>
+              ) : (
+                <p className="text-slate-400 text-sm">No subscription</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Telegram Account */}
+          <Card>
+            <CardHeader><h3 className="text-sm font-semibold">Telegram Account</h3></CardHeader>
+            <CardContent className="p-4">
+              {telegram ? (
+                <>
+                  <InfoRow label="Phone" value={telegram.phone_number ? <span className="font-mono text-xs">{telegram.phone_number}</span> : null} />
+                  <InfoRow label="Session Status" value={
+                    telegram.is_active
+                      ? <span className="text-success-600 dark:text-success-400 font-medium">Connected</span>
+                      : <span className="text-warning-600 dark:text-warning-400 font-medium">Disconnected</span>
+                  } />
+                  <InfoRow label="Listener Engine" value={telegram.listener_engine} />
+                  <InfoRow label="Telegram ID" value={telegram.telegram_user_id ? <span className="font-mono text-xs">{telegram.telegram_user_id}</span> : null} />
+                  <InfoRow label="Linked At" value={telegram.linked_at ? formatDate(telegram.linked_at) : null} />
+                  <InfoRow label="Session Created" value={telegram.created_at ? formatDate(telegram.created_at) : null} />
+                </>
+              ) : (
+                <p className="text-slate-400 text-sm">No Telegram account connected</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Quick stats */}
