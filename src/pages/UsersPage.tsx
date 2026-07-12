@@ -111,6 +111,11 @@ export function UsersPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    const q = searchParams.get('search') ?? '';
+    if (q && q !== search) setSearch(q);
+  }, [searchParams]);
+
   useEffect(() => { setPage(1); }, [search, subStatus]);
 
   useEffect(() => {
