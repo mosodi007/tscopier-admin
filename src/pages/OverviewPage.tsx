@@ -53,9 +53,9 @@ export function OverviewPage() {
   useEffect(() => {
     async function fetchStats() {
       const now = new Date();
-      const utcTodayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-      const utcWeekStart = new Date(utcTodayStart);
-      utcWeekStart.setUTCDate(utcWeekStart.getUTCDate() - utcWeekStart.getUTCDay());
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekStart = new Date(todayStart);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
 
       const [
         { count: totalUsers },
@@ -75,28 +75,28 @@ export function OverviewPage() {
       ] = await Promise.all([
         adminSupabase.from('user_profiles').select('*', { count: 'exact', head: true }),
         adminSupabase.from('user_profiles').select('*', { count: 'exact', head: true })
-          .gte('created_at', utcTodayStart.toISOString()),
+          .gte('created_at', todayStart.toISOString()),
         adminSupabase.from('user_profiles').select('*', { count: 'exact', head: true })
-          .gte('created_at', utcWeekStart.toISOString()),
+          .gte('created_at', weekStart.toISOString()),
         adminSupabase.from('subscriptions').select('plan'),
         adminSupabase.from('broker_accounts').select('connection_status'),
         adminSupabase.from('telegram_channels').select('*', { count: 'exact', head: true })
           .eq('is_active', true),
         adminSupabase.from('signals').select('*', { count: 'exact', head: true })
-          .gte('created_at', utcTodayStart.toISOString()),
+          .gte('created_at', todayStart.toISOString()),
         adminSupabase.from('trades')
           .select('lot_size, profit, direction, entry_price, cwe_close_price')
           .eq('status', 'closed')
-          .gte('closed_at', utcTodayStart.toISOString()),
+          .gte('closed_at', todayStart.toISOString()),
         adminSupabase.from('signals').select('status'),
         adminSupabase.from('trades')
           .select('user_id, profit, direction, entry_price, cwe_close_price')
-          .gte('closed_at', utcWeekStart.toISOString()),
+          .gte('closed_at', weekStart.toISOString()),
         adminSupabase.from('worker_session_leases').select('expires_at'),
         adminSupabase.from('signal_queue_dead_letters').select('*', { count: 'exact', head: true })
           .neq('status', 'replayed'),
         adminSupabase.from('listener_events').select('*', { count: 'exact', head: true })
-          .gte('created_at', utcTodayStart.toISOString()),
+          .gte('created_at', todayStart.toISOString()),
         adminSupabase.from('user_profiles').select('*', { count: 'exact', head: true })
           .eq('copier_paused', true),
       ]);
