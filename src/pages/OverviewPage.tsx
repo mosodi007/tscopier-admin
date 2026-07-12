@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { authSupabase as adminSupabase, fetchDisplayNames } from '../lib/adminSupabase';
-import { formatCurrency, formatNumber, formatRelative } from '../lib/formatters';
+import { formatCurrency, formatNumber } from '../lib/formatters';
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import { StatusBadge } from '../components/StatusBadge';
 import { UserLink } from '../components/UserLink';
@@ -29,7 +29,6 @@ interface Stats {
   deadLetters: number;
   listenerEventsToday: number;
   copierPausedUsers: number;
-  recentActivities: { id: string; user_id: string; display_name: string | null; event_type: string; description: string | null; created_at: string }[];
 }
 
 function StatCard({ label, value, sub, color = 'text-slate-900 dark:text-slate-100' }: {
@@ -53,10 +52,10 @@ export function OverviewPage() {
 
   useEffect(() => {
     async function fetchStats() {
-      const utcTodayStart = new Date();
-      utcTodayStart.setHours(0, 0, 0, 0);
+      const now = new Date();
+      const utcTodayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
       const utcWeekAgo = new Date(utcTodayStart);
-      utcWeekAgo.setDate(utcWeekAgo.getDate() - 7);
+      utcWeekAgo.setUTCDate(utcWeekAgo.getUTCDate() - 7);
 
       const [
         { count: totalUsers },
@@ -73,7 +72,6 @@ export function OverviewPage() {
         { count: deadLetterCount },
         { count: listenerEventsToday },
         { count: copierPausedCount },
-        { data: recentActivitiesRaw },
       ] = await Promise.all([
         adminSupabase.from('user_profiles').select('*', { count: 'exact', head: true }),
         adminSupabase.from('user_profiles').select('*', { count: 'exact', head: true })
@@ -101,10 +99,6 @@ export function OverviewPage() {
           .gte('created_at', utcTodayStart.toISOString()),
         adminSupabase.from('user_profiles').select('*', { count: 'exact', head: true })
           .eq('copier_paused', true),
-        adminSupabase.from('activities')
-          .select('id, user_id, event_type, description, created_at')
-          .order('created_at', { ascending: false })
-          .limit(10),
       ]);
 
       // Aggregate plan counts
@@ -168,13 +162,6 @@ export function OverviewPage() {
 
       const activeWorkers = (workerLeases ?? []).filter((l: any) => l.expires_at && new Date(l.expires_at) > new Date()).length;
 
-      const activityUserIds = [...new Set((recentActivitiesRaw ?? []).map((a: any) => a.user_id).filter(Boolean))];
-      const activityNames = await fetchDisplayNames(activityUserIds);
-      const recentActivities = (recentActivitiesRaw ?? []).map((a: any) => ({
-        ...a,
-        display_name: activityNames[a.user_id] ?? null,
-      }));
-
       setStats({
         totalUsers: totalUsers ?? 0,
         newToday: newToday ?? 0,
@@ -194,7 +181,6 @@ export function OverviewPage() {
         deadLetters: deadLetterCount ?? 0,
         listenerEventsToday: listenerEventsToday ?? 0,
         copierPausedUsers: copierPausedCount ?? 0,
-        recentActivities,
       });
       setLoading(false);
     }
@@ -361,32 +347,6 @@ export function OverviewPage() {
         </div>
       </Card>
 
-      {/* Recent Activities */}
-      <Card>
-        <CardHeader>
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Recent Activities</h3>
-        </CardHeader>
-        <div className="divide-y divide-slate-100 dark:divide-slate-800">
-          {(stats.recentActivities ?? []).length === 0 ? (
-            <div className="px-4 py-8 text-center text-slate-400 text-sm">No recent activities</div>
-          ) : (
-            (stats.recentActivities ?? []).map(a => (
-              <div key={a.id} className="flex items-center gap-3 px-4 py-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <UserLink userId={a.user_id} displayName={a.display_name} />
-                    <StatusBadge status={a.event_type} />
-                  </div>
-                  {a.description && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">{a.description}</p>
-                  )}
-                </div>
-                <span className="text-[11px] text-slate-400 whitespace-nowrap shrink-0">{formatRelative(a.created_at)}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </Card>
     </div>
   );
 }
