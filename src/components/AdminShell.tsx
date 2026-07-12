@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Server, MessageSquare, Zap, TrendingUp,
@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { ThemeToggle } from './ui/ThemeToggle';
 import { authSupabase } from '../lib/adminSupabase';
+import { shortId } from '../lib/formatters';
 import clsx from 'clsx';
 
 interface NavItem {
@@ -107,6 +108,72 @@ export function AdminShell({ children }: AdminShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const adminName = sessionStorage.getItem('admin_display_name') ?? 'Admin';
 
+  const [suggestions, setSuggestions] = useState<{ user_id: string; display_name: string | null }[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const fetchSuggestions = useCallback(async (term: string) => {
+    if (term.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    const filter = /^[0-9a-f]{8}-/i.test(term.trim())
+      ? `display_name.ilike.%${term.trim()}%,user_id.eq.${term.trim()}`
+      : `display_name.ilike.%${term.trim()}%`;
+    const { data } = await authSupabase
+      .from('user_profiles')
+      .select('user_id, display_name')
+      .or(filter)
+      .order('created_at', { ascending: false })
+      .limit(8);
+    setSuggestions(data ?? []);
+  }, []);
+
+  const handleSearchInput = (value: string) => {
+    setGlobalSearch(value);
+    setActiveSuggestion(-1);
+    setShowSuggestions(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchSuggestions(value), 200);
+  };
+
+  const selectSuggestion = (userId: string) => {
+    setShowSuggestions(false);
+    setSuggestions([]);
+    setGlobalSearch('');
+    navigate(`/users/${userId}`);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (!showSuggestions || suggestions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveSuggestion(prev => Math.min(prev + 1, suggestions.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveSuggestion(prev => Math.max(prev - 1, -1));
+    } else if (e.key === 'Enter' && activeSuggestion >= 0) {
+      e.preventDefault();
+      selectSuggestion(suggestions[activeSuggestion].user_id);
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+    }
+  };
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node) &&
+          inputRef.current && !inputRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   useEffect(() => {
     setSidebarOpen(false);
   }, [location.pathname]);
@@ -115,6 +182,8 @@ export function AdminShell({ children }: AdminShellProps) {
     e.preventDefault();
     const q = globalSearch.trim();
     if (q) {
+      setShowSuggestions(false);
+      setSuggestions([]);
       navigate(`/users?search=${encodeURIComponent(q)}`);
       setGlobalSearch('');
     }
@@ -223,16 +292,50 @@ export function AdminShell({ children }: AdminShellProps) {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <form onSubmit={handleSearch} className="flex-1 max-w-md">
+          <form onSubmit={handleSearch} className="flex-1 max-w-md relative">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
+                ref={inputRef}
                 value={globalSearch}
-                onChange={e => setGlobalSearch(e.target.value)}
+                onChange={e => handleSearchInput(e.target.value)}
+                onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                onKeyDown={handleSearchKeyDown}
                 placeholder="Search users..."
                 className="input-base pl-10 py-1.5 text-sm"
               />
             </div>
+            {showSuggestions && suggestions.length > 0 && (
+              <div
+                ref={suggestionsRef}
+                className="absolute z-50 top-full mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden"
+              >
+                {suggestions.map((s, idx) => (
+                  <button
+                    key={s.user_id}
+                    type="button"
+                    className={clsx(
+                      'w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors',
+                      idx === activeSuggestion
+                        ? 'bg-primary-50 dark:bg-primary-900/30'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                    )}
+                    onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s.user_id); }}
+                    onMouseEnter={() => setActiveSuggestion(idx)}
+                  >
+                    <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-xs font-medium text-slate-600 dark:text-slate-300 shrink-0">
+                      {(s.display_name ?? s.user_id)[0]?.toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                        {s.display_name ?? 'Unnamed'}
+                      </p>
+                      <p className="text-xs text-slate-400 font-mono truncate">{shortId(s.user_id)}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </form>
         </header>
 
