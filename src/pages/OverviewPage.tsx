@@ -54,8 +54,8 @@ export function OverviewPage() {
     async function fetchStats() {
       const now = new Date();
       const utcTodayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-      const utcWeekAgo = new Date(utcTodayStart);
-      utcWeekAgo.setUTCDate(utcWeekAgo.getUTCDate() - 7);
+      const utcWeekStart = new Date(utcTodayStart);
+      utcWeekStart.setUTCDate(utcWeekStart.getUTCDate() - utcWeekStart.getUTCDay());
 
       const [
         { count: totalUsers },
@@ -77,7 +77,7 @@ export function OverviewPage() {
         adminSupabase.from('user_profiles').select('*', { count: 'exact', head: true })
           .gte('created_at', utcTodayStart.toISOString()),
         adminSupabase.from('user_profiles').select('*', { count: 'exact', head: true })
-          .gte('created_at', utcWeekAgo.toISOString()),
+          .gte('created_at', utcWeekStart.toISOString()),
         adminSupabase.from('subscriptions').select('plan'),
         adminSupabase.from('broker_accounts').select('connection_status'),
         adminSupabase.from('telegram_channels').select('*', { count: 'exact', head: true })
@@ -91,7 +91,7 @@ export function OverviewPage() {
         adminSupabase.from('signals').select('status'),
         adminSupabase.from('trades')
           .select('user_id, profit, direction, entry_price, cwe_close_price')
-          .gte('closed_at', utcWeekAgo.toISOString()),
+          .gte('closed_at', utcWeekStart.toISOString()),
         adminSupabase.from('worker_session_leases').select('expires_at'),
         adminSupabase.from('signal_queue_dead_letters').select('*', { count: 'exact', head: true })
           .neq('status', 'replayed'),
