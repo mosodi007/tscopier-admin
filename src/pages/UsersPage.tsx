@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { authSupabase as adminSupabase } from '../lib/adminSupabase';
 import { formatDateOnly, shortId } from '../lib/formatters';
 import { DataTable, Pagination } from '../components/DataTable';
@@ -30,6 +30,7 @@ const PAGE_SIZE = 50;
 
 export function UsersPage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const [subStatus, setSubStatus] = useState('');
   const [data, setData] = useState<UserRow[]>([]);
@@ -37,6 +38,69 @@ export function UsersPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Typeahead suggestions
+  const [suggestions, setSuggestions] = useState<{ user_id: string; display_name: string | null }[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const fetchSuggestions = useCallback(async (term: string) => {
+    if (term.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    const { data: results } = await adminSupabase
+      .from('user_profiles')
+      .select('user_id, display_name')
+      .or(`display_name.ilike.%${term.trim()}%,user_id::text.ilike.%${term.trim()}%`)
+      .order('created_at', { ascending: false })
+      .limit(8);
+    setSuggestions(results ?? []);
+  }, []);
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setActiveSuggestion(-1);
+    setShowSuggestions(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => fetchSuggestions(value), 200);
+  };
+
+  const selectSuggestion = (userId: string) => {
+    setShowSuggestions(false);
+    setSuggestions([]);
+    navigate(`/users/${userId}`);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!showSuggestions || suggestions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveSuggestion(prev => Math.min(prev + 1, suggestions.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveSuggestion(prev => Math.max(prev - 1, -1));
+    } else if (e.key === 'Enter' && activeSuggestion >= 0) {
+      e.preventDefault();
+      selectSuggestion(suggestions[activeSuggestion].user_id);
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+    }
+  };
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node) &&
+          inputRef.current && !inputRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => { setPage(1); }, [search, subStatus]);
 
@@ -168,16 +232,48 @@ export function UsersPage() {
       )}
 
       <div className="filter-bar rounded-xl">
-        <div className="flex-1 min-w-[200px]">
+        <div className="flex-1 min-w-[200px] relative">
           <Input
+            ref={inputRef}
             placeholder="Search by name or user ID..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => handleSearchChange(e.target.value)}
+            onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+            onKeyDown={handleKeyDown}
             prefix={<Search className="w-3.5 h-3.5" />}
             suffix={search ? (
-              <button onClick={() => setSearch('')}><X className="w-3 h-3" /></button>
+              <button onClick={() => { setSearch(''); setSuggestions([]); setShowSuggestions(false); }}><X className="w-3 h-3" /></button>
             ) : null}
           />
+          {showSuggestions && suggestions.length > 0 && (
+            <div
+              ref={suggestionsRef}
+              className="absolute z-50 top-full mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden"
+            >
+              {suggestions.map((s, idx) => (
+                <button
+                  key={s.user_id}
+                  className={`w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors ${
+                    idx === activeSuggestion
+                      ? 'bg-primary-50 dark:bg-primary-900/30'
+                      : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                  }`}
+                  onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s.user_id); }}
+                  onMouseEnter={() => setActiveSuggestion(idx)}
+                >
+                  <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-xs font-medium text-slate-600 dark:text-slate-300 shrink-0">
+                    {(s.display_name ?? s.user_id)[0]?.toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                      {s.display_name ?? 'Unnamed'}
+                    </p>
+                    <p className="text-xs text-slate-400 font-mono truncate">{shortId(s.user_id)}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <Select
           options={[
