@@ -101,6 +101,14 @@ interface AdminShellProps {
   children: React.ReactNode;
 }
 
+interface SearchResult {
+  category: 'user' | 'broker' | 'channel' | 'trade';
+  id: string;
+  label: string;
+  sublabel: string;
+  path: string;
+}
+
 export function AdminShell({ children }: AdminShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -108,66 +116,131 @@ export function AdminShell({ children }: AdminShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const adminName = sessionStorage.getItem('admin_display_name') ?? 'Admin';
 
-  const [suggestions, setSuggestions] = useState<{ user_id: string; display_name: string | null }[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [activeSuggestion, setActiveSuggestion] = useState(-1);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [showResults, setShowResults] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const [searching, setSearching] = useState(false);
+  const resultsRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const fetchSuggestions = useCallback(async (term: string) => {
-    if (term.trim().length < 2) {
-      setSuggestions([]);
+  const fetchResults = useCallback(async (term: string) => {
+    const t = term.trim();
+    if (t.length < 2) {
+      setResults([]);
+      setSearching(false);
       return;
     }
-    const filter = /^[0-9a-f]{8}-/i.test(term.trim())
-      ? `display_name.ilike.%${term.trim()}%,user_id.eq.${term.trim()}`
-      : `display_name.ilike.%${term.trim()}%`;
-    const { data } = await authSupabase
-      .from('user_profiles')
-      .select('user_id, display_name')
-      .or(filter)
-      .order('created_at', { ascending: false })
-      .limit(8);
-    setSuggestions(data ?? []);
+    setSearching(true);
+
+    const isUuid = /^[0-9a-f]{8}-/i.test(t);
+    const items: SearchResult[] = [];
+
+    const [usersRes, brokersRes, channelsRes, tradesRes] = await Promise.all([
+      authSupabase
+        .from('user_profiles')
+        .select('user_id, display_name')
+        .or(isUuid ? `display_name.ilike.%${t}%,user_id.eq.${t}` : `display_name.ilike.%${t}%`)
+        .order('created_at', { ascending: false })
+        .limit(5),
+      authSupabase
+        .from('broker_accounts')
+        .select('id, label, broker, user_id')
+        .ilike('label', `%${t}%`)
+        .limit(5),
+      authSupabase
+        .from('telegram_channels')
+        .select('id, display_name, channel_username')
+        .or(`display_name.ilike.%${t}%,channel_username.ilike.%${t}%`)
+        .limit(5),
+      authSupabase
+        .from('trades')
+        .select('id, symbol, side, user_id')
+        .ilike('symbol', `%${t}%`)
+        .order('created_at', { ascending: false })
+        .limit(5),
+    ]);
+
+    (usersRes.data ?? []).forEach((u: any) => {
+      items.push({
+        category: 'user',
+        id: u.user_id,
+        label: u.display_name ?? 'Unnamed',
+        sublabel: shortId(u.user_id),
+        path: `/users/${u.user_id}`,
+      });
+    });
+
+    (brokersRes.data ?? []).forEach((b: any) => {
+      items.push({
+        category: 'broker',
+        id: b.id,
+        label: b.label ?? 'Unnamed',
+        sublabel: b.broker ?? '',
+        path: `/brokers?search=${encodeURIComponent(b.label ?? '')}`,
+      });
+    });
+
+    (channelsRes.data ?? []).forEach((c: any) => {
+      items.push({
+        category: 'channel',
+        id: c.id,
+        label: c.display_name ?? c.channel_username ?? 'Unnamed',
+        sublabel: c.channel_username ? `@${c.channel_username}` : '',
+        path: `/telegram/channels?search=${encodeURIComponent(c.display_name ?? c.channel_username ?? '')}`,
+      });
+    });
+
+    (tradesRes.data ?? []).forEach((tr: any) => {
+      items.push({
+        category: 'trade',
+        id: tr.id,
+        label: tr.symbol,
+        sublabel: tr.side ?? '',
+        path: `/trades?search=${encodeURIComponent(tr.symbol)}`,
+      });
+    });
+
+    setResults(items);
+    setSearching(false);
   }, []);
 
   const handleSearchInput = (value: string) => {
     setGlobalSearch(value);
-    setActiveSuggestion(-1);
-    setShowSuggestions(true);
+    setActiveIndex(-1);
+    setShowResults(true);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchSuggestions(value), 200);
+    debounceRef.current = setTimeout(() => fetchResults(value), 250);
   };
 
-  const selectSuggestion = (userId: string) => {
-    setShowSuggestions(false);
-    setSuggestions([]);
+  const selectResult = (result: SearchResult) => {
+    setShowResults(false);
+    setResults([]);
     setGlobalSearch('');
-    navigate(`/users/${userId}`);
+    navigate(result.path);
   };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
-    if (!showSuggestions || suggestions.length === 0) return;
+    if (!showResults || results.length === 0) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActiveSuggestion(prev => Math.min(prev + 1, suggestions.length - 1));
+      setActiveIndex(prev => Math.min(prev + 1, results.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setActiveSuggestion(prev => Math.max(prev - 1, -1));
-    } else if (e.key === 'Enter' && activeSuggestion >= 0) {
+      setActiveIndex(prev => Math.max(prev - 1, -1));
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
       e.preventDefault();
-      selectSuggestion(suggestions[activeSuggestion].user_id);
+      selectResult(results[activeIndex]);
     } else if (e.key === 'Escape') {
-      setShowSuggestions(false);
+      setShowResults(false);
     }
   };
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target as Node) &&
+      if (resultsRef.current && !resultsRef.current.contains(e.target as Node) &&
           inputRef.current && !inputRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
+        setShowResults(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -182,10 +255,14 @@ export function AdminShell({ children }: AdminShellProps) {
     e.preventDefault();
     const q = globalSearch.trim();
     if (q) {
-      setShowSuggestions(false);
-      setSuggestions([]);
-      navigate(`/users?search=${encodeURIComponent(q)}`);
-      setGlobalSearch('');
+      if (activeIndex >= 0 && results[activeIndex]) {
+        selectResult(results[activeIndex]);
+      } else {
+        setShowResults(false);
+        setResults([]);
+        navigate(`/users?search=${encodeURIComponent(q)}`);
+        setGlobalSearch('');
+      }
     }
   }
 
@@ -299,41 +376,68 @@ export function AdminShell({ children }: AdminShellProps) {
                 ref={inputRef}
                 value={globalSearch}
                 onChange={e => handleSearchInput(e.target.value)}
-                onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                onFocus={() => { if (results.length > 0) setShowResults(true); }}
                 onKeyDown={handleSearchKeyDown}
-                placeholder="Search users..."
+                placeholder="Search users, brokers, channels, trades..."
                 className="input-base pl-10 py-1.5 text-sm"
               />
             </div>
-            {showSuggestions && suggestions.length > 0 && (
+            {showResults && (results.length > 0 || (searching && globalSearch.trim().length >= 2)) && (
               <div
-                ref={suggestionsRef}
-                className="absolute z-50 top-full mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden"
+                ref={resultsRef}
+                className="absolute z-50 top-full mt-1 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg overflow-hidden max-h-80 overflow-y-auto"
               >
-                {suggestions.map((s, idx) => (
-                  <button
-                    key={s.user_id}
-                    type="button"
-                    className={clsx(
-                      'w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors',
-                      idx === activeSuggestion
-                        ? 'bg-primary-50 dark:bg-primary-900/30'
-                        : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
-                    )}
-                    onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s.user_id); }}
-                    onMouseEnter={() => setActiveSuggestion(idx)}
-                  >
-                    <div className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-xs font-medium text-slate-600 dark:text-slate-300 shrink-0">
-                      {(s.display_name ?? s.user_id)[0]?.toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-                        {s.display_name ?? 'Unnamed'}
-                      </p>
-                      <p className="text-xs text-slate-400 font-mono truncate">{shortId(s.user_id)}</p>
-                    </div>
-                  </button>
-                ))}
+                {searching && results.length === 0 && (
+                  <div className="px-3 py-3 text-xs text-slate-400 text-center">Searching...</div>
+                )}
+                {(() => {
+                  const categories: { key: SearchResult['category']; label: string; icon: React.ElementType }[] = [
+                    { key: 'user', label: 'Users', icon: Users },
+                    { key: 'broker', label: 'Broker Accounts', icon: Server },
+                    { key: 'channel', label: 'Telegram Channels', icon: MessageSquare },
+                    { key: 'trade', label: 'Trades', icon: TrendingUp },
+                  ];
+                  let flatIdx = -1;
+                  return categories.map(cat => {
+                    const catResults = results.filter(r => r.category === cat.key);
+                    if (catResults.length === 0) return null;
+                    const CatIcon = cat.icon;
+                    return (
+                      <div key={cat.key}>
+                        <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-750 border-b border-slate-100 dark:border-slate-700 flex items-center gap-2">
+                          <CatIcon className="w-3 h-3 text-slate-400" />
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">{cat.label}</span>
+                        </div>
+                        {catResults.map(r => {
+                          flatIdx++;
+                          const idx = flatIdx;
+                          return (
+                            <button
+                              key={r.id}
+                              type="button"
+                              className={clsx(
+                                'w-full text-left px-3 py-2 flex items-center gap-3 transition-colors',
+                                idx === activeIndex
+                                  ? 'bg-primary-50 dark:bg-primary-900/30'
+                                  : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                              )}
+                              onMouseDown={(e) => { e.preventDefault(); selectResult(r); }}
+                              onMouseEnter={() => setActiveIndex(idx)}
+                            >
+                              <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-[10px] font-medium text-slate-600 dark:text-slate-300 shrink-0">
+                                {r.label[0]?.toUpperCase()}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{r.label}</p>
+                                {r.sublabel && <p className="text-xs text-slate-400 font-mono truncate">{r.sublabel}</p>}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             )}
           </form>
