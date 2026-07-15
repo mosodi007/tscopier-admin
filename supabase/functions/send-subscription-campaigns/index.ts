@@ -141,6 +141,8 @@ function buildInvoiceDueEmail(
   });
 }
 
+let lastSendError: string | null = null;
+
 async function sendEmail(
   to: string,
   subject: string,
@@ -148,6 +150,7 @@ async function sendEmail(
   from?: string,
 ): Promise<string | null> {
   if (!RESEND_API_KEY) {
+    lastSendError = "RESEND_API_KEY missing";
     console.error("[send-subscription-campaigns] RESEND_API_KEY missing");
     return null;
   }
@@ -166,12 +169,15 @@ async function sendEmail(
       }),
     });
     if (!res.ok) {
-      console.error("[send-subscription-campaigns] Resend error:", await res.text());
+      const errText = await res.text();
+      lastSendError = `Resend ${res.status}: ${errText.slice(0, 200)}`;
+      console.error("[send-subscription-campaigns] Resend error:", errText);
       return null;
     }
     const data = await res.json();
     return data.id ?? "sent";
   } catch (err) {
+    lastSendError = `Exception: ${(err as Error).message}`;
     console.error("[send-subscription-campaigns] send failed:", err);
     return null;
   }
@@ -212,10 +218,14 @@ async function processNoSubscriptionNudge(): Promise<number> {
   );
 
   if (error) {
+    lastSendError = `RPC nudge error: ${error.message}`;
     console.error("[send-subscription-campaigns] nudge rpc:", error.message);
     return 0;
   }
-  if (!eligibleUsers?.length) return 0;
+  if (!eligibleUsers?.length) {
+    lastSendError = lastSendError || "nudge RPC returned 0 recipients";
+    return 0;
+  }
 
   let sent = 0;
   for (const user of eligibleUsers as EmailRecipient[]) {
@@ -346,6 +356,7 @@ Deno.serve(async (req: Request) => {
         no_subscription_nudge_sent: nudgeSent,
         trial_expired_sent: trialSent,
         invoice_due_sent: invoiceSent,
+        last_error: lastSendError,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
