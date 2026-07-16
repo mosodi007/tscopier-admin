@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { authSupabase as adminSupabase, fetchDisplayNames } from '../lib/adminSupabase';
-import { formatCurrency, formatNumber } from '../lib/formatters';
+import { formatNumber } from '../lib/formatters';
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import { StatusBadge } from '../components/StatusBadge';
 import { UserLink } from '../components/UserLink';
@@ -17,17 +17,13 @@ interface Stats {
   subscriptionsByPlan: { plan: string; count: number }[];
   connectedBrokers: number;
   errorBrokers: number;
-  pendingBrokers: number;
   activeTelegramChannels: number;
   signalsToday: number;
   tradesToday: number;
   lotsToday: number;
-  plToday: number;
   signalsByStatus: { status: string; count: number }[];
   topUsers: { user_id: string; display_name: string | null; trade_count: number; total_pnl: number }[];
   activeWorkers: number;
-  deadLetters: number;
-  listenerEventsToday: number;
   copierPausedUsers: number;
 }
 
@@ -69,8 +65,6 @@ export function OverviewPage() {
         { data: signalsByStatus },
         { data: topUsersRaw },
         { data: workerLeases },
-        { count: deadLetterCount },
-        { count: listenerEventsToday },
         { count: copierPausedCount },
       ] = await Promise.all([
         adminSupabase.from('user_profiles').select('*', { count: 'exact', head: true }),
@@ -93,10 +87,6 @@ export function OverviewPage() {
           .select('user_id, profit, direction, entry_price, cwe_close_price')
           .gte('closed_at', weekBoundary.toISOString()),
         adminSupabase.from('worker_session_leases').select('expires_at'),
-        adminSupabase.from('signal_queue_dead_letters').select('*', { count: 'exact', head: true })
-          .neq('status', 'replayed'),
-        adminSupabase.from('listener_events').select('*', { count: 'exact', head: true })
-          .gte('created_at', todayBoundary.toISOString()),
         adminSupabase.from('user_profiles').select('*', { count: 'exact', head: true })
           .eq('copier_paused', true),
       ]);
@@ -130,7 +120,7 @@ export function OverviewPage() {
       const todayTrades = tradeStats ?? [];
       const tradesToday = todayTrades.length;
       const lotsToday = todayTrades.reduce((sum: number, t: any) => sum + (Number(t.lot_size) ?? 0), 0);
-      const plToday = todayTrades.reduce((sum: number, t: any) => sum + computePnl(t), 0);
+
 
       // Signal stats
       const sigMap: Record<string, number> = {};
@@ -169,17 +159,13 @@ export function OverviewPage() {
         subscriptionsByPlan,
         connectedBrokers: statusMap['connected'] ?? 0,
         errorBrokers: statusMap['error'] ?? 0,
-        pendingBrokers: statusMap['pending'] ?? 0,
         activeTelegramChannels: activeTelegramChannels ?? 0,
         signalsToday: signalsToday ?? 0,
         tradesToday,
         lotsToday,
-        plToday,
         signalsByStatus: signalsByStatusArr,
         topUsers,
         activeWorkers,
-        deadLetters: deadLetterCount ?? 0,
-        listenerEventsToday: listenerEventsToday ?? 0,
         copierPausedUsers: copierPausedCount ?? 0,
       });
       setLoading(false);
@@ -234,7 +220,6 @@ export function OverviewPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Connected Brokers" value={stats.connectedBrokers ?? 0} color="text-success-600" />
           <StatCard label="Broker Errors" value={stats.errorBrokers ?? 0} color="text-error-600" />
-          <StatCard label="Pending Brokers" value={stats.pendingBrokers ?? 0} color="text-warning-600" />
           <StatCard label="Active Telegram Channels" value={stats.activeTelegramChannels ?? 0} color="text-primary-600" />
         </div>
       </section>
@@ -244,8 +229,6 @@ export function OverviewPage() {
         <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">System Health</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Active Workers" value={stats.activeWorkers ?? 0} color={(stats.activeWorkers ?? 0) > 0 ? 'text-success-600' : 'text-error-600'} />
-          <StatCard label="Dead Letters" value={stats.deadLetters ?? 0} color={(stats.deadLetters ?? 0) === 0 ? 'text-success-600' : 'text-error-600'} />
-          <StatCard label="Listener Events Today" value={formatNumber(stats.listenerEventsToday ?? 0)} />
           <StatCard label="Copier Paused Users" value={stats.copierPausedUsers ?? 0} color={(stats.copierPausedUsers ?? 0) > 0 ? 'text-warning-600' : 'text-slate-900 dark:text-slate-100'} />
         </div>
       </section>
@@ -256,7 +239,6 @@ export function OverviewPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard label="Trades Opened" value={stats.tradesToday ?? 0} />
           <StatCard label="Total Lots" value={formatNumber(stats.lotsToday, 2)} />
-          <StatCard label="Realized P&L" value={formatCurrency(stats.plToday ?? 0)} color={(stats.plToday ?? 0) >= 0 ? 'text-success-600' : 'text-error-600'} />
           <StatCard label="Signals Today" value={stats.signalsToday ?? 0} />
         </div>
       </section>
