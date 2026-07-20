@@ -29,6 +29,10 @@ const STATUS_MAP: Record<string, Variant> = {
   // subscription plan
   basic: 'info',
   advanced: 'primary',
+  // trade direction
+  buy: 'success',
+  // copier log status
+  success: 'success',
   // generic
   true: 'success',
   false: 'muted',
