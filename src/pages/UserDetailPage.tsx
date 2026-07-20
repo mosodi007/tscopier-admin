@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Server, MessageSquare, Zap, TrendingUp, FlaskConical, Mail, Send } from 'lucide-react';
+import { ArrowLeft, Server, MessageSquare, Zap, TrendingUp, FlaskConical, Mail, Send, ScrollText } from 'lucide-react';
 import { authSupabase as adminSupabase } from '../lib/adminSupabase';
-import { formatDate, formatDateOnly, formatCurrency, truncate } from '../lib/formatters';
+import { formatDate, formatDateOnly, formatCurrency, formatRelative, truncate } from '../lib/formatters';
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import { StatusBadge } from '../components/StatusBadge';
+import { JsonViewer } from '../components/JsonViewer';
 import { Button } from '../components/ui/Button';
 
 interface UserProfile {
@@ -69,8 +70,10 @@ export function UserDetailPage() {
   const [signals, setSignals] = useState<any[]>([]);
   const [trades, setTrades] = useState<any[]>([]);
   const [backtestCount, setBacktestCount] = useState(0);
+  const [copierLogs, setCopierLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedSignalId, setExpandedSignalId] = useState<string | null>(null);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [emailSending, setEmailSending] = useState<string | null>(null);
   const [emailResult, setEmailResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [showEmailMenu, setShowEmailMenu] = useState(false);
@@ -146,6 +149,7 @@ export function UserDetailPage() {
         { count: btCount },
         { data: tgSession },
         { data: tgClaim },
+        { data: copierLogsRaw },
       ] = await Promise.all([
         adminSupabase.from('user_profiles').select('*').eq('user_id', userId!).maybeSingle(),
         adminSupabase.from('subscriptions').select('*').eq('user_id', userId!).maybeSingle(),
@@ -156,6 +160,11 @@ export function UserDetailPage() {
         adminSupabase.from('backtest_runs').select('*', { count: 'exact', head: true }).eq('user_id', userId!),
         adminSupabase.from('telegram_sessions').select('phone_number, is_active, listener_engine, created_at').eq('user_id', userId!).order('created_at', { ascending: false }).limit(1).maybeSingle(),
         adminSupabase.from('telegram_account_claims').select('telegram_user_id, linked_at').eq('user_id', userId!).maybeSingle(),
+        adminSupabase.from('trade_execution_logs')
+          .select('id, broker_account_id, signal_id, action, status, error_message, request_payload, response_payload, created_at')
+          .eq('user_id', userId!)
+          .order('created_at', { ascending: false })
+          .limit(30),
       ]);
 
       setProfile(prof as UserProfile);
@@ -173,6 +182,7 @@ export function UserDetailPage() {
       setSignals(sigs ?? []);
       setTrades(trds ?? []);
       setBacktestCount(btCount ?? 0);
+      setCopierLogs(copierLogsRaw ?? []);
       setLoading(false);
     }
     load();
@@ -337,6 +347,7 @@ export function UserDetailPage() {
           { icon: MessageSquare, label: 'Telegram Channels', value: channels.length },
           { icon: Zap, label: 'Signals (recent)', value: signals.length },
           { icon: TrendingUp, label: 'Trades (recent)', value: trades.length },
+          { icon: ScrollText, label: 'Copier Logs', value: copierLogs.length },
           { icon: FlaskConical, label: 'Backtests', value: backtestCount },
         ].map(stat => (
           <div key={stat.label} className="stat-card text-center">
@@ -441,6 +452,71 @@ export function UserDetailPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      </Card>
+
+      {/* Copier Logs */}
+      <Card>
+        <CardHeader><h3 className="text-sm font-semibold">Copier Logs (last 30)</h3></CardHeader>
+        <div className="overflow-x-auto">
+          <table className="table-base">
+            <thead><tr><th>Time</th><th>Action</th><th>Status</th><th>Error</th><th>Signal ID</th></tr></thead>
+            <tbody>
+              {copierLogs.length === 0 ? (
+                <tr><td colSpan={5} className="text-center py-6 text-slate-400">No copier logs</td></tr>
+              ) : copierLogs.map((log: any) => (
+                <tr
+                  key={log.id}
+                  className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                  onClick={() => setExpandedLogId(prev => prev === log.id ? null : log.id)}
+                >
+                  <td className="text-xs text-slate-400 whitespace-nowrap">{formatRelative(log.created_at)}</td>
+                  <td><span className="badge bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs">{log.action}</span></td>
+                  <td><StatusBadge status={log.status} dot /></td>
+                  <td className="text-xs text-error-500 max-w-[200px] truncate">{log.error_message ?? '—'}</td>
+                  <td className="text-xs text-slate-400 font-mono">{log.signal_id ? truncate(log.signal_id, 8) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {expandedLogId && (() => {
+            const log = copierLogs.find((l: any) => l.id === expandedLogId);
+            if (!log) return null;
+            return (
+              <div className="border-t border-slate-200 dark:border-slate-700 p-4 space-y-4 bg-slate-50 dark:bg-slate-800/50">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                  <div>
+                    <p className="font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Signal ID</p>
+                    <p className="text-slate-700 dark:text-slate-300 font-mono">{log.signal_id ?? '—'}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Broker Account</p>
+                    <p className="text-slate-700 dark:text-slate-300 font-mono">{log.broker_account_id ? truncate(log.broker_account_id, 12) : '—'}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-500 dark:text-slate-400 mb-0.5">Timestamp</p>
+                    <p className="text-slate-700 dark:text-slate-300">{formatDate(log.created_at)}</p>
+                  </div>
+                </div>
+                {log.error_message && (
+                  <div>
+                    <p className="text-xs font-semibold text-error-500 mb-1">Error Message</p>
+                    <pre className="text-xs text-error-500 whitespace-pre-wrap break-all bg-white dark:bg-slate-900 p-3 rounded-lg border border-error-200 dark:border-error-800">{log.error_message}</pre>
+                  </div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">Request Payload</p>
+                    <JsonViewer data={log.request_payload} collapsed={false} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">Response Payload</p>
+                    <JsonViewer data={log.response_payload} collapsed={false} />
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </Card>
     </div>
