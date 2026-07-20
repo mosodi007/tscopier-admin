@@ -460,11 +460,15 @@ export function UserDetailPage() {
         <CardHeader><h3 className="text-sm font-semibold">Copier Logs (last 30)</h3></CardHeader>
         <div className="overflow-x-auto">
           <table className="table-base">
-            <thead><tr><th>Time</th><th>Action</th><th>Status</th><th>Error</th><th>Signal ID</th></tr></thead>
+            <thead><tr><th>Time</th><th>Action</th><th>Status</th><th>Skip Reason</th><th>Error</th><th>Signal ID</th></tr></thead>
             <tbody>
               {copierLogs.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-6 text-slate-400">No copier logs</td></tr>
-              ) : copierLogs.map((log: any) => (
+                <tr><td colSpan={6} className="text-center py-6 text-slate-400">No copier logs</td></tr>
+              ) : copierLogs.map((log: any) => {
+                const skipReason = log.status === 'skipped'
+                  ? (log.request_payload?.skip_reason || log.error_message || '—')
+                  : '—';
+                return (
                 <tr
                   key={log.id}
                   className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
@@ -473,10 +477,12 @@ export function UserDetailPage() {
                   <td className="text-xs text-slate-400 whitespace-nowrap">{formatRelative(log.created_at)}</td>
                   <td><span className="badge bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs">{log.action}</span></td>
                   <td><StatusBadge status={log.status} dot /></td>
+                  <td className="text-xs text-warning-600 dark:text-warning-400 max-w-[200px] truncate">{skipReason}</td>
                   <td className="text-xs text-error-500 max-w-[200px] truncate">{log.error_message ?? '—'}</td>
                   <td className="text-xs text-slate-400 font-mono">{log.signal_id ? truncate(log.signal_id, 8) : '—'}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           {expandedLogId && (() => {

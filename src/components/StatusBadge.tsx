@@ -13,7 +13,7 @@ const STATUS_MAP: Record<string, Variant> = {
   // signal status
   parsed: 'info',
   executed: 'success',
-  skipped: 'muted',
+  skipped: 'warning',
   failed: 'error',
   // trade status
   open: 'primary',
